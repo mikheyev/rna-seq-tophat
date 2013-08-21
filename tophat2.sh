@@ -14,7 +14,7 @@ export TMP=/genefs/MikheyevU/temp
 
 a=(rnaseq2/*1.fastq)
 b=(rnaseq2/*2.fastq)
-c=$(rnaseq2/*.fastq | awk 'NR%3==0')
+c=(`ls rnaseq2/*.fastq | awk 'NR%3==0' |tr "\n" " "`)
 base=$(basename ${a["SGE_TASK_ID"-1]} "_1.fastq")
 f=${a["SGE_TASK_ID"-1]}
 r=${b["SGE_TASK_ID"-1]}
