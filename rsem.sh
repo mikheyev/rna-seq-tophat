@@ -2,17 +2,20 @@
 #$ -q long
 #$ -j y
 #$ -cwd
-#$ -N rsem
-#$ -l h_vmem=4G
-#$ -l virtual_free=4G
+#$ -l h_vmem=10G
+#$ -l virtual_free=10G
+#$ -N rs
 . $HOME/.bashrc
 export TEMPDIR=/genefs/MikheyevU/temp
+export TMPDIR=/genefs/MikheyevU/temp
 export TEMP=/genefs/MikheyevU/temp
 export TMP=/genefs/MikheyevU/temp
-a=(raw/*/*1.fastq)
-b=(raw/*/*2.fastq)
-base=$(basename ${a["SGE_TASK_ID"-1]} "_R1.fastq")
-f=${a["SGE_TASK_ID"-1]}
-r=${b["SGE_TASK_ID"-1]} 
 
-rsem-calculate-expression -p 4 --paired-end $f $r mp  $base   
+a=(data/trimmed/*val_1.fq) #44
+b=(data/trimmed/*val_2.fq)
+f=${a["SGE_TASK_ID"-1]}
+r=${b["SGE_TASK_ID"-1]}
+base=`basename $f _1_val_1.fq`
+
+rsem-calculate-expression -p 4 --paired-end $f $r  data/trinity_out_dir/Trinity_noERCC $base
+

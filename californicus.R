@@ -3,25 +3,24 @@ library(RMySQL)
 library(edgeR)
 library(scales)
 
-mydb = dbConnect(MySQL(), user='californicus', password='pogo', dbname='californicus', host='ecoevo.unit.oist.jp')
-
 	#     __________  ________________ ___      
 	#    / ____/ __ \/ ____/ ____/ __ \__ \     
 	#   / __/ / /_/ / /   / /   / /_/ /_/ /     
 	#  / /___/ _, _/ /___/ /___ \__, / __/      
 	# /_____/_/ |_|\____/\____//____/____/      
 	                                          
+mydb = dbConnect(MySQL(), user='californicus', password='pogo', dbname='californicus', host='ecoevo.unit.oist.jp')
 ercc <- dbGetQuery(mydb,"
-SELECT ercc.lib_id, ercc.transcript_id, ercc.descriptive_name,ercc.coverage, ercc.FPKM, ExFold_added.mix, ExFold_reference.`attamoles_ul` FROM (SELECT * FROM rnaseq WHERE descriptive_name REGEXP '^ERCC') AS ercc
+SELECT ercc.lib_id, ercc.gene, ercc.count, ercc.fpkm, ExFold_added.mix, ExFold_reference.`attamoles_ul` FROM (SELECT * FROM rnaseq WHERE gene REGEXP '^ERCC') AS ercc
 JOIN ExFold_added
 ON ercc.lib_id = ExFold_added.lib_id
 JOIN ExFold_reference
-ON  ExFold_added.mix = ExFold_reference.mix AND ercc.descriptive_name = ExFold_reference.id
-ORDER BY ercc.lib_id, ercc.transcript_id
+ON  ExFold_added.mix = ExFold_reference.mix AND ercc.gene = ExFold_reference.id
+ORDER BY ercc.lib_id, ercc.gene
 ")
-
-#figure out FPKM cutoff
-ercc_min <- aggregate(ercc$FPKM[ercc$FPKM!=0],by=list(category=ercc$lib_id[ercc$FPKM!=0]),FUN=min)
+dbDisconnect(mydb)
+#figure out fpkm cutoff
+ercc_min <- aggregate(ercc$fpkm[ercc$fpkm!=0],by=list(category=ercc$lib_id[ercc$fpkm!=0]),FUN=min)
 cutoff_guess <- mean(ercc_min$x)
 
 #take a guess cutoff and compute average correlation in exoected vs observed fold-change
@@ -36,9 +35,9 @@ corr_max <- function(cutoff) {
 		cor_count <- cor_count + 1
 		a <- subset(ercc,lib_id == i)
 		b <- subset(ercc,lib_id == j)
-		mdata <- na.omit(merge(a,b,by="transcript_id"))
-		keep <- apply(mdata[,c("FPKM.x","FPKM.y")],1,min) > cutoff & mdata$attamoles_ul.y > 0
-		obs <- (mdata$FPKM.x/mdata$FPKM.y)[keep]
+		mdata <- na.omit(merge(a,b,by="gene"))
+		keep <- apply(mdata[,c("fpkm.x","fpkm.y")],1,min) > cutoff & mdata$attamoles_ul.y > 0
+		obs <- (mdata$fpkm.x/mdata$fpkm.y)[keep]
 		exp <- (mdata$attamoles_ul.x/mdata$attamoles_ul.y)[keep]
 		cor_sum <- cor_sum + cor(obs,exp,use="complete.obs")
 		}
@@ -46,23 +45,25 @@ corr_max <- function(cutoff) {
 }
 
 #find best cutoff
-cutoff <- optim(cutoff_guess,corr_max,method = "L-BFGS-B", lower = 0, upper = 1)
+cutoff <- optim(cutoff_guess,corr_max,method = "L-BFGS-B", lower = 0, upper = 1,control=c(fnscale=-10,trace=1))
 corr_max(cutoff$value)
+
+# ERCC plots
 
 #matrix plot fold-change, with kept points as solid circles, and eliminated points as hollow circles
 op <- par(no.readonly = TRUE)
 mix1 <- levels(as.factor(subset(ercc, mix==1)$lib_id))
 mix2 <- levels(as.factor(subset(ercc, mix==2)$lib_id))
-pdf('/Volumes/mikheyev/Sasha/californicus/plots/ercc_obs_exp.pdf',width=100, height=100, paper='special')
+pdf('/Users/sasha/Dropbox/projects/californicus/plots/ercc_obs_exp.pdf',width=100, height=100, paper='special')
 par(mfrow=c(length(mix1),length(mix2)),oma=c(0,0,0,0),mar=c(1,1,1,1))
 for (i in mix1)
 	for (j in mix2) {
 		a = subset(ercc,lib_id == i)
 		b = subset(ercc,lib_id == j)
-		mdata <- na.omit(merge(a,b,by="gene_id"))
+		mdata <- na.omit(merge(a,b,by="gene"))
 		mdata$keep <- 0
-		mdata$keep[apply(mdata[,c("FPKM.x","FPKM.y")],1,min) > cutoff$value] <- 1
-		mdata$obs <- mdata$FPKM.x/mdata$FPKM.y
+		mdata$keep[apply(mdata[,c("fpkm.x","fpkm.y")],1,min) > cutoff$value] <- 1
+		mdata$obs <- mdata$fpkm.x/mdata$fpkm.y
 		mdata$exp <- mdata$attamoles_ul.x/mdata$attamoles_ul.y
 		mdata[sapply(mdata,is.infinite)] <- NA
 		mdata <- mdata[complete.cases(mdata[,c("obs","exp")]),]
@@ -75,11 +76,11 @@ dev.off()
 par(op)
 
 #plot dymanic range and lower limit
-pdf('/Volumes/mikheyev/Sasha/californicus/plots/dynamic range.pdf',width=10, height=8, paper='special')
+pdf('/Users/sasha/Dropbox/projects/californicus/plots/dynamic range.pdf',width=10, height=8, paper='special')
 fmt <- function(x) prettyNum(x,format="f",digits=2)
 ercc$mix[ercc$mix == 1] <- "Mix 1"
 ercc$mix[ercc$mix == 2] <- "Mix 2"
-ggplot(data=ercc, aes(x=attamoles_ul,y=FPKM,color=lib_id))+geom_point()+scale_x_continuous(trans = log2_trans(),labels = fmt)+scale_y_continuous(trans = log2_trans())+theme_bw()+facet_grid(.~ mix)+xlab("concentration of spike-in")+theme(legend.position="none")+geom_hline(yintercept=cutoff$value,color="red")
+ggplot(data=ercc, aes(x=attamoles_ul,y=fpkm,color=lib_id))+geom_point()+scale_x_continuous(trans = log2_trans(),labels = fmt)+scale_y_continuous(trans = log2_trans())+theme_bw()+facet_grid(.~ mix)+xlab("concentration of spike-in")+theme(legend.position="none")+geom_hline(yintercept=cutoff$value,color="red")
 dev.off()
 
 	#        __                                __           _     
@@ -89,61 +90,94 @@ dev.off()
 	# \__,_/\__, /\___/   \__,_/_/ /_/\__,_/_/\__, /____/_/____/  
 	#      /____/                            /____/               
 
-#get regular transcripts, using the cutorr
-counts <- dbGetQuery(mydb,
-	"SELECT lib_id, transcript_id,locus_id,descriptive_name,coverage FROM rnaseq WHERE descriptive_name NOT REGEXP '^ERCC'" )
+#get experimental factors
+mydb = dbConnect(MySQL(), user='californicus', password='pogo', dbname='californicus', host='ecoevo.unit.oist.jp')
+experimental_factors <- dbGetQuery(mydb,"SELECT * FROM factors")
+rownames(experimental_factors) <- experimental_factors$id
+experimental_factors <- experimental_factors[,-1]
+group <- factor(paste(experimental_factors$phenotype,experimental_factors$context,sep=""))
 
-genes <- data.frame(gene_id = counts[counts$lib_id == "HA_153G",c("gene_id")])
-rownames(genes) <- counts[counts$lib_id == "HA_153G",c("tracking_id")]
-genes <- rbind(genes,unstack(counts,coverage ~ lib_id))
-# keep genes with at least half the libraries above the threshols
-keep <- rowSums(genes > cutoff$value) > ncol(genes)/2
-
+#read contrasts
 contrasts <- dbGetQuery(mydb, "SELECT * FROM contrasts" )
 rownames(contrasts) <- contrasts$name
 contrasts <- contrasts[,-1]
+
+#get transcripts and apply cutoff (this fetch takes a while)
+counts <- dbGetQuery(mydb,
+	"SELECT lib_id, gene,fpkm,count as coverage FROM rnaseq WHERE gene NOT REGEXP '^ERCC' " )
+dbDisconnect(mydb)
+
+fpkm <- unstack(counts,fpkm ~ lib_id) 
+genes <- unstack(counts,coverage ~ lib_id)
+rownames(genes) <- counts[counts$lib_id == "HA_153G",c("gene")]
+rownames(fpkm) <- counts[counts$lib_id == "HA_153G",c("gene")]
+# keep genes with at least half the libraries above the cutoff threshold
+keep <- rowSums(fpkm > cutoff$value) > ncol(genes)/2
+
+#calculate main model
+design <- model.matrix(~0+group)
+colnames(design) <- levels(group)
+y <- DGEList(counts=genes[keep,rownames(experimental_factors)],group=group)
+y <- calcNormFactors(y)
+y <- estimateCommonDisp(y,verbose=TRUE)
+y <- estimateTagwiseDisp(y, verbose=TRUE)
+fit <- glmFit(y, design)
+
+my.contrasts <- makeContrasts(H_P = HA + HH + HP + Hs - PA - PH - PP - Ps, 
+								Hs_Ps = Hs - Ps,
+								Hs_HH = Hs - HH,
+								Ps_PP = Ps - PP,
+								HH_HP = HH - HP,
+								PP_HP = PP - HP,
+								levels=design)
+lrt <- glmLRT(fit, contrast=my.contrasts[,"H_P"])
+summary(dt <- decideTestsDGE(lrt))
+lrt <- glmLRT(fit, contrast=my.contrasts[,"Hs_Ps"])
+summary(dt <- decideTestsDGE(lrt))
+
+
+
+
 #normalize contrasts, which are specified as ones and zeros (this is actually not necessary for the tests below)
-for(i in 1:nrow(contrasts)) {
-	contrasts[i,contrasts[i,] == 1 ] <- contrasts[i,contrasts[i,] == 1 ]/sum(contrasts[i,] == 1 )
-	contrasts[i,contrasts[i,] == -1 ] <- contrasts[i,contrasts[i,] == -1 ]/abs(sum(contrasts[i,] == -1 ))
-}
 
-dge_list <- list()
-pdf('/Volumes/mikheyev/Sasha/californicus/plots/nmds.pdf',width=10, height=8, paper='special')
+#in logFC negative values are upregulated in positive contrasts
+#note, this stage takes a while, so we will write the results to file at the end, so that this analysis can be resumed later
 for(i in 1:nrow(contrasts)) {
-	pair <- factor(sapply(colnames(genes),substr,4,6))
-	group <- factor(c(rep(1,sum(contrasts[i,]>0)),rep(2,sum(contrasts[i,]<0))))
-	keep_columns <- c(colnames(contrasts)[contrasts[i,]>0],colnames(contrasts)[contrasts[i,]<0])
-	keep <- rowSums(genes[,keep_columns] > cutoff$value) > length(keep_columns)/2
-	y <- DGEList(counts=genes[keep,keep_columns],group=group)
+	averaged_genes <- genes
+	pair_id <- factor(sapply(colnames(averaged_genes),substr,4,6))  # codes correspond to experimental groups
+	drop <-  c()
+	# in all but the last contrast, average queens form the same treatment
+	if (i < nrow(contrasts)) {
+		for(j in levels(pair_id)) {
+			if (sum(pair_id == j) > 1) {
+				averaged_genes[,which(pair_id == j)[1]] <- rowMeans(genes[,pair_id == j])
+				drop <- union(drop,c(which(pair_id == j)[-1]))
+			}
+		}
+	}
+	#drop columns that were averaged
+	keep_columns <- setdiff(which(contrasts[i,]!=0),drop)
+	# set up comparison vector for the test
+	comparison <- c(rep(1,sum(keep_columns %in% which(contrasts[i,]>0))),rep(2,sum(keep_columns %in% which(contrasts[i,]<0))))
+	# re-order columns so that they are matched up with the comparison vector
+	keep_columns <- c(keep_columns[keep_columns %in% which(contrasts[i,]>0)],keep_columns[keep_columns %in% which(contrasts[i,]<0)])
+	keep <- rowSums(averaged_genes[,keep_columns] > cutoff$value) > length(keep_columns)/2
+	y <- DGEList(counts=averaged_genes[keep,keep_columns],group=comparison)
 	y <- calcNormFactors(y)
-	y <- estimateCommonDisp(y)
-	y <- estimateTagwiseDisp(y)
+	print("estimating common dispersion")
+	y <- estimateCommonDisp(y,verbose=TRUE)
+	print("estimating tagwise dispersion")
+	y <- estimateTagwiseDisp(y, verbose=TRUE)
+	print("significance testing")
 	et <- exactTest(y)
-	de <- decideTestsDGE(et,p=0.05, adjust="BH")
-	print(paste("contrast"),rownames(contrasts[i,]))
-	print(table(de))
-	dge_list[[rownames(contrasts[i,])]] <- list(et = et, de = de)
-	mdsplot <- plotMDS(y,top=100)
-	plot(mdsplot, main=rownames(contrasts[i,]),xlab="Dimension 1",ylab="Dimension 2")
-	points(mdsplot$cmdscale.out[colnames(contrasts)[contrasts[i,]>0],1],mdsplot$cmdscale.out[colnames(contrasts)[contrasts[i,]>0],2],pch=16,col="red",cex=2)
-	points(mdsplot$cmdscale.out[colnames(contrasts)[contrasts[i,]<0],1],mdsplot$cmdscale.out[colnames(contrasts)[contrasts[i,]<0],2],pch=16,col="blue",cex=2)
-	# text(mdsplot$cmdscale.out[,1],mdsplot$cmdscale.out[,2],keep_columns)
+	et$table$p_adj <- p.adjust(et$table$PValue,method="fdr")
+	dge_list[[i]] <- list(talbe = et$table)
+	if (nrow(et$table[et$table$p_adj<0.05,]) !=0) {
+		out <- et$table[et$table$p_adj<0.05,]
+		out$contrast <- rownames(contrasts[i,])
+		print(out)
+	}
+#	write.csv(et$table,paste("/Volumes/mikheyev/Sasha/californicus/et/",rownames(contrasts[1,]),".csv",sep=""))
 }
-dev.off()
 
-
-
-
-# plot NMDS as a sanity check
-
-# mdsplot <- plotMDS(dge,top=500)
-# plot(mdsplot, main="",xlab="Dimension 1",ylab="Dimension 2")
-# text(mdsplot$cmdscale.out[,1],mdsplot$cmdscale.out[,2],factors$factor)
-
-#testing contrasts
-dge_list <- list() # this list stores results of likelihood ratio tests, and a list of differentially expressed genes, after multiple comparison correction
-for (i in 1:nrow(contrasts)) {
-	lrt <- glmLRT(fit,contrast=t(contrasts[i,]))
-	dge_list[[i]] <- list(lrt = lrt, lrt_et = decideTestsDGE(lrt,p=0.05,adjust="BH"))
-}
+#write results to file

@@ -1,29 +1,31 @@
-##Using tophat2 to map transcripts
+# Gene expression associated with haplo- and pleiometrotic founding in *Pogonomyrmex californicus*
+
+## Preparing reads
+
+move from SQC folder (**move.sh**), then **trim.sh** to perform quality trimming
+
+## Assemble transcriptome
+
+**trinity.sh** gives us 311,726 transcripts
+
+## Mapping reads back with rsem
+
+First, prepare reference
+```
+/apps/MikheyevU/sasha/trinity/trinity/util/RSEM_util/run_RSEM_align_n_estimate.pl  --transcripts trinity_out_dir/Trinity.fasta --just_prep_reference 
+```
+Next, use **rsem.sh** to map reads.
 
 
-1.  move.sh
-    - Move data from SQC into the working directory, and merges files
-2. tophat1.sh
-   - Map using tophat2, then extract unmapped reads, and convert them back to fastq.
-   - This step is parallelized on the cluser.
-   - Output in rnaseq   
-3. merge_junctions.sh
-   - Merge junctions from first tophat run
-4. tophat2.sh
-   - Try re-mapping the unmapped reads
-   - Output in rnaseq2
-5. tophat2.sh
-   - Try re-mapping the unmapped reads 
-   - Output into rnaseq2
-   - extract reads still unmapped into *unmapped*
-   - This step is likewise parallelized.
-6. trinity.sh
-   - assemble unmpped reads using trinity
-7. merge_tophat.sh
-   - merge all of the tophat assemblies
-8. cufflinks.sh
-   - find transcripts
-9. merge_assembly.sh
-   - combine trinity and cufflinks assemblies, add ERCC controls
-10. rsem.sh
-   - map libraries to assemblies to get counts
+## BLAST search of transcripts vs nr
+
+### Determine ERCC transcripts
+
+```
+makeblastdb -in ERCC92.fa -out ERCC -dbtype nucl
+blastn -db ERCC -outfmt 6 -ungapped -word_size 20 -max_target_seqs 1 -evalue 1e-100 -query ../../trinity_out_dir/Trinity.fasta -out hits.txt
+
+```
+
+### Find hits to nr
+
