@@ -98,9 +98,9 @@ experimental_factors <- experimental_factors[,-1]
 group <- factor(paste(experimental_factors$phenotype,experimental_factors$context,sep=""))
 
 #read contrasts
-contrasts <- dbGetQuery(mydb, "SELECT * FROM contrasts" )
-rownames(contrasts) <- contrasts$name
-contrasts <- contrasts[,-1]
+# contrasts <- dbGetQuery(mydb, "SELECT * FROM contrasts" )
+# rownames(contrasts) <- contrasts$name
+# contrasts <- contrasts[,-1]
 
 #get transcripts and apply cutoff (this fetch takes a while)
 counts <- dbGetQuery(mydb,
@@ -113,6 +113,7 @@ rownames(genes) <- counts[counts$lib_id == "HA_153G",c("gene")]
 rownames(fpkm) <- counts[counts$lib_id == "HA_153G",c("gene")]
 # keep genes with at least half the libraries above the cutoff threshold
 keep <- rowSums(fpkm > cutoff$value) > ncol(genes)/2
+#NOTE: This is a also a good time to filter out transcripts without BLAST hits for additional power
 
 #calculate main model
 design <- model.matrix(~0+group)
@@ -135,49 +136,48 @@ summary(dt <- decideTestsDGE(lrt))
 lrt <- glmLRT(fit, contrast=my.contrasts[,"Hs_Ps"])
 summary(dt <- decideTestsDGE(lrt))
 
+plotMDS(y)
 
+# #normalize contrasts, which are specified as ones and zeros (this is actually not necessary for the tests below)
 
+# #in logFC negative values are upregulated in positive contrasts
+# #note, this stage takes a while, so we will write the results to file at the end, so that this analysis can be resumed later
+# for(i in 1:nrow(contrasts)) {
+# 	averaged_genes <- genes
+# 	pair_id <- factor(sapply(colnames(averaged_genes),substr,4,6))  # codes correspond to experimental groups
+# 	drop <-  c()
+# 	# in all but the last contrast, average queens form the same treatment
+# 	if (i < nrow(contrasts)) {
+# 		for(j in levels(pair_id)) {
+# 			if (sum(pair_id == j) > 1) {
+# 				averaged_genes[,which(pair_id == j)[1]] <- rowMeans(genes[,pair_id == j])
+# 				drop <- union(drop,c(which(pair_id == j)[-1]))
+# 			}
+# 		}
+# 	}
+# 	#drop columns that were averaged
+# 	keep_columns <- setdiff(which(contrasts[i,]!=0),drop)
+# 	# set up comparison vector for the test
+# 	comparison <- c(rep(1,sum(keep_columns %in% which(contrasts[i,]>0))),rep(2,sum(keep_columns %in% which(contrasts[i,]<0))))
+# 	# re-order columns so that they are matched up with the comparison vector
+# 	keep_columns <- c(keep_columns[keep_columns %in% which(contrasts[i,]>0)],keep_columns[keep_columns %in% which(contrasts[i,]<0)])
+# 	keep <- rowSums(averaged_genes[,keep_columns] > cutoff$value) > length(keep_columns)/2
+# 	y <- DGEList(counts=averaged_genes[keep,keep_columns],group=comparison)
+# 	y <- calcNormFactors(y)
+# 	print("estimating common dispersion")
+# 	y <- estimateCommonDisp(y,verbose=TRUE)
+# 	print("estimating tagwise dispersion")
+# 	y <- estimateTagwiseDisp(y, verbose=TRUE)
+# 	print("significance testing")
+# 	et <- exactTest(y)
+# 	et$table$p_adj <- p.adjust(et$table$PValue,method="fdr")
+# 	dge_list[[i]] <- list(talbe = et$table)
+# 	if (nrow(et$table[et$table$p_adj<0.05,]) !=0) {
+# 		out <- et$table[et$table$p_adj<0.05,]
+# 		out$contrast <- rownames(contrasts[i,])
+# 		print(out)
+# 	}
+# #	write.csv(et$table,paste("/Volumes/mikheyev/Sasha/californicus/et/",rownames(contrasts[1,]),".csv",sep=""))
+# }
 
-#normalize contrasts, which are specified as ones and zeros (this is actually not necessary for the tests below)
-
-#in logFC negative values are upregulated in positive contrasts
-#note, this stage takes a while, so we will write the results to file at the end, so that this analysis can be resumed later
-for(i in 1:nrow(contrasts)) {
-	averaged_genes <- genes
-	pair_id <- factor(sapply(colnames(averaged_genes),substr,4,6))  # codes correspond to experimental groups
-	drop <-  c()
-	# in all but the last contrast, average queens form the same treatment
-	if (i < nrow(contrasts)) {
-		for(j in levels(pair_id)) {
-			if (sum(pair_id == j) > 1) {
-				averaged_genes[,which(pair_id == j)[1]] <- rowMeans(genes[,pair_id == j])
-				drop <- union(drop,c(which(pair_id == j)[-1]))
-			}
-		}
-	}
-	#drop columns that were averaged
-	keep_columns <- setdiff(which(contrasts[i,]!=0),drop)
-	# set up comparison vector for the test
-	comparison <- c(rep(1,sum(keep_columns %in% which(contrasts[i,]>0))),rep(2,sum(keep_columns %in% which(contrasts[i,]<0))))
-	# re-order columns so that they are matched up with the comparison vector
-	keep_columns <- c(keep_columns[keep_columns %in% which(contrasts[i,]>0)],keep_columns[keep_columns %in% which(contrasts[i,]<0)])
-	keep <- rowSums(averaged_genes[,keep_columns] > cutoff$value) > length(keep_columns)/2
-	y <- DGEList(counts=averaged_genes[keep,keep_columns],group=comparison)
-	y <- calcNormFactors(y)
-	print("estimating common dispersion")
-	y <- estimateCommonDisp(y,verbose=TRUE)
-	print("estimating tagwise dispersion")
-	y <- estimateTagwiseDisp(y, verbose=TRUE)
-	print("significance testing")
-	et <- exactTest(y)
-	et$table$p_adj <- p.adjust(et$table$PValue,method="fdr")
-	dge_list[[i]] <- list(talbe = et$table)
-	if (nrow(et$table[et$table$p_adj<0.05,]) !=0) {
-		out <- et$table[et$table$p_adj<0.05,]
-		out$contrast <- rownames(contrasts[i,])
-		print(out)
-	}
-#	write.csv(et$table,paste("/Volumes/mikheyev/Sasha/californicus/et/",rownames(contrasts[1,]),".csv",sep=""))
-}
-
-#write results to file
+# #write results to file
