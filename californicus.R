@@ -124,19 +124,38 @@ y <- estimateCommonDisp(y,verbose=TRUE)
 y <- estimateTagwiseDisp(y, verbose=TRUE)
 fit <- glmFit(y, design)
 
-my.contrasts <- makeContrasts(H_P = HA + HH + HP + Hs - PA - PH - PP - Ps, 
-								Hs_Ps = Hs - Ps,
-								Hs_HH = Hs - HH,
-								Ps_PP = Ps - PP,
-								HH_HP = HH - HP,
-								PP_HP = PP - HP,
-								levels=design)
-lrt <- glmLRT(fit, contrast=my.contrasts[,"H_P"])
-summary(dt <- decideTestsDGE(lrt))
-lrt <- glmLRT(fit, contrast=my.contrasts[,"Hs_Ps"])
-summary(dt <- decideTestsDGE(lrt))
+my.contrasts <- makeContrasts(
+# Haplos vs. pleos across all social contexts (singletons and pairs)
+H_P = Hs + HH + HP - Ps - PP - PH,
+# Haplos vs. pleos, singletons only
+Hs_Ps = Hs - Ps,
+# Haplos, singletons vs. in pairs
+Hs_HH = Hs - HH,
+# Pleos, singletons vs. in pairs
+Ps_PP = Ps - PP,
+# Haplos, in pure vs. mixed pairs (with other haplo vs. with pleo)
+HH_HP = HH - HP,
+# Pleos, in pure vs. mixed pairs (with other pleo vs. with haplo)
+PP_PH = PP - PH,
+# Aggressive vs. non-aggressive pairs
+A_C = (HA + PA)/2 - (HH + PP + HP + PH)/4,
+# Aggressive vs. singletons
+A_s = HA + PA - Hs - Ps,
+levels=design)
 
-plotMDS(y)
+for (i in 1:ncol(my.contrasts)) {
+	print(i)
+	lrt <- glmLRT(fit, contrast=my.contrasts[,i])
+	dt <- decideTestsDGE(lrt)
+	z <- gzfile(paste0("/Users/sasha/Dropbox/projects/californicus/tests/",colnames(my.contrasts)[i],".csv.gz"),"w")
+	write.csv(cbind(subset(lrt$table,select=-PValue),data.frame(significant=dt)),z)
+	close(z)
+}
+
+mds <- plotMDS(y)
+
+ggplot(cbind(data.frame(mds1=mds$cmdscale.out[,1],mds2=mds$cmdscale.out[,2]),experimental_factors),aes(x=mds1,y=mds2,color=factor(phenotype),shape=factor(context)))+geom_point(size=5)+theme_bw()+scale_color_manual(values=c("red","blue"))+theme(legend.justification=c(1,0), legend.position=c(1,.6))
+ggsave("/Users/sasha/Dropbox/projects/californicus/plots/mds.pdf")
 
 # #normalize contrasts, which are specified as ones and zeros (this is actually not necessary for the tests below)
 
