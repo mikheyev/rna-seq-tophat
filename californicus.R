@@ -2,6 +2,8 @@ library(ggplot2)
 library(RMySQL)
 library(edgeR)
 library(scales)
+library(GOstats)
+library(GSEABase)
 
 	#     __________  ________________ ___      
 	#    / ____/ __ \/ ____/ ____/ __ \__ \     
@@ -47,6 +49,8 @@ corr_max <- function(cutoff) {
 #find best cutoff
 cutoff <- optim(cutoff_guess,corr_max,method = "L-BFGS-B", lower = 0, upper = 1,control=c(fnscale=-10,trace=1))
 corr_max(cutoff$value)
+
+library(WGCNA)
 
 # ERCC plots
 
@@ -216,4 +220,18 @@ C_upreg <- hyperGTest(GSEAGOHyperGParams(name = "non-aggressive upregulated vs a
 	universeGeneIds=universe,ontology = "BP",pvalueCutoff = 0.05,conditional = FALSE,testDirection = "over"))
 summary(C_upreg)
 write.table(summary(C_upreg),"/Users/sasha/Dropbox/projects/californicus/tests/go/C_upreg.txt")
+
+
+
+#analysis of upreg modules
+
+for (i in 1:1) {
+	module <- as.character(read.table(paste0("/Users/sasha/Dropbox/projects/californicus/ACvsd_Modules/ACvsd_Module",i,".txt"),header=F)$V1)
+	upreg <- hyperGTest(GSEAGOHyperGParams(name = i,
+	geneSetCollection=gsc,geneIds = module,
+	universeGeneIds=universe,ontology = "BP",pvalueCutoff = 0.05,conditional = FALSE,testDirection = "over"))
+	print(summary(upreg))
+}
+
+
 
